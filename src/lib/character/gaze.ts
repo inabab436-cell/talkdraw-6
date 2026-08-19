@@ -19,9 +19,29 @@ export class GazeController {
   private wanderX = 0;
   private wanderY = 0;
   private nextWanderAt = 0;
+  /** Forced glance toward a stimulus; overrides pointer + wander until it expires. */
+  private glanceX = 0;
+  private glanceY = 0;
+  private glanceUntil = 0;
+
+  /**
+   * Snap the gaze toward a stimulus immediately (fast perception channel).
+   * `point` is normalized 0..1 inside the frame, `clock` is the core clock.
+   */
+  glanceAt(point: { x: number; y: number }, clock: number, holdSeconds = 0.9) {
+    this.glanceX = (point.x - 0.5) * 2;
+    this.glanceY = (point.y - 0.5) * 2;
+    this.glanceUntil = clock + holdSeconds;
+    this.targetX = this.glanceX;
+    this.targetY = this.glanceY;
+    // Eyes jump instantly; the head still follows with its own lag.
+    this.eyeX = this.glanceX;
+    this.eyeY = this.glanceY;
+  }
 
   /** Feed a normalized 0..1 pointer position inside the frame. */
   look(point: { x: number; y: number } | null) {
+    if (this.glanceUntil > 0) return;
     if (!point) {
       this.targetX = this.wanderX;
       this.targetY = this.wanderY;
@@ -32,8 +52,17 @@ export class GazeController {
   }
 
   tick(dt: number, opts: { attention: number; arousal: number; clock: number; hasPointer: boolean }) {
+    if (this.glanceUntil > 0) {
+      if (opts.clock < this.glanceUntil) {
+        this.targetX = this.glanceX;
+        this.targetY = this.glanceY;
+      } else {
+        this.glanceUntil = 0;
+      }
+    }
+
     // Idle wander: occasional small saccades so the eyes never freeze.
-    if (!opts.hasPointer && opts.clock >= this.nextWanderAt) {
+    if (this.glanceUntil === 0 && !opts.hasPointer && opts.clock >= this.nextWanderAt) {
       this.wanderX = (Math.random() * 2 - 1) * 0.45;
       this.wanderY = (Math.random() * 2 - 1) * 0.3;
       this.nextWanderAt = opts.clock + 1.6 + Math.random() * 3.4;

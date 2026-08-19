@@ -250,12 +250,16 @@
   transform-origin: 50% 60%;
   animation: none;
   transform: translate(calc(var(--eye-x, 0) * .9%), calc(var(--eye-y, 0) * .55%))
-    scaleY(calc(1 - var(--blink, 0) * 0.92));
+    scaleY(calc(1 - var(--blink, 0) * 0.92 + var(--startle, 0) * 0.07))
+    scaleX(calc(1 + var(--startle, 0) * 0.02));
 }
 .rig-brows {
   animation: none;
-  transform: translate(calc(var(--eye-x, 0) * .3%), calc(var(--eye-y, 0) * -.35% - var(--arousal, 0) * 0.25%))
-    rotate(calc(var(--eye-x, 0) * 1deg));
+  transform: translate(
+      calc(var(--eye-x, 0) * .3%),
+      calc(var(--eye-y, 0) * -.35% - var(--arousal, 0) * 0.25% - var(--startle, 0) * 0.7%)
+    )
+    rotate(calc(var(--eye-x, 0) * 1deg + var(--startle, 0) * 1.2deg));
 }
 .rig-mouth-talk { animation: tk-mouth 0.32s ease-in-out infinite; transform-origin: 50% 40%; }
 .character-live-frame {
@@ -269,6 +273,7 @@
   --micro-y: 0;
   --micro-rot: 0;
   --arousal: 0.3;
+  --startle: 0;
   --touch-x: 50%;
   --touch-y: 50%;
   cursor: grab;

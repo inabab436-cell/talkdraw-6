@@ -8,6 +8,7 @@ const navLinks = [
   { to: "/", label: "Home" },
   { to: "/characters", label: "Characters" },
   { to: "/about", label: "About" },
+  { to: "/voice", label: "Voice" },
 ];
 
 export function SiteHeader() {

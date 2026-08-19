@@ -250,7 +250,8 @@
   transform-origin: 50% 60%;
   animation: none;
   transform: translate(calc(var(--eye-x, 0) * .9%), calc(var(--eye-y, 0) * .55%))
-    scaleY(calc(1 - var(--blink, 0) * 0.92));
+    scaleY(calc(1 - var(--blink, 0) * 0.92 + var(--startle, 0) * 0.07))
+    scaleX(calc(1 + var(--startle, 0) * 0.02));
 }
 .rig-brows {
   animation: none;

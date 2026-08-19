@@ -5,8 +5,9 @@ import { toast } from "sonner";
 import { reactToTouch } from "@/lib/touch.functions";
 import { speakLine } from "@/lib/voice.functions";
 import { useCharacterTouch } from "@/lib/touch/useCharacterTouch";
-import { useTouchQueue } from "@/lib/touch/useTouchQueue";
+import { useSpeechChannel } from "@/lib/touch/useSpeechChannel";
 import { useCharacterLife } from "@/lib/character/useCharacterLife";
+import { FRESHNESS_MS, type PerceptionMark } from "@/lib/character/core";
 import type {
   AiTouchDecision,
   CharacterState,
@@ -38,6 +39,14 @@ function instantAnimation(touch: TouchEventPayload): AiTouchDecision["animation"
 
 const clamp = (n: number) => Math.max(-1, Math.min(1, n));
 
+/** Rough 0..1 strength of a touch, used by the fast perception channel. */
+function intensityOf(touch: TouchEventPayload) {
+  if (touch.kind === "hold" || touch.kind === "long-press") return 0.9;
+  if (touch.kind === "drag" || touch.kind === "swipe") return 0.7;
+  if (touch.kind === "double-tap" || touch.repeatCount >= 3) return 0.6;
+  return 0.4;
+}
+
 export function CharacterScene({ character }: { character: Character }) {
   const call = useServerFn(reactToTouch);
   const speak = useServerFn(speakLine);
@@ -46,6 +55,9 @@ export function CharacterScene({ character }: { character: Character }) {
   const lifeRef = useRef<{
     applyMood: (mood: string) => void;
     impulse: (delta: Record<string, number>) => void;
+    notice: (s: { kind: string; x: number; y: number; intensity: number }) => PerceptionMark;
+    consumeFreshMark: (windowMs?: number) => PerceptionMark | null;
+    worthCommenting: (mark: PerceptionMark) => boolean;
   } | null>(null);
 
   useEffect(() => () => audioRef.current?.pause(), []);
@@ -159,21 +171,39 @@ export function CharacterScene({ character }: { character: Character }) {
     [call, character, playLine, play],
   );
 
-  const { enqueue, busy: thinking } = useTouchQueue({ process });
+  /**
+   * Gate for the freshness slot: only a stimulus that is still inside the short
+   * validity window AND worth a comment by the internal state gets spoken about.
+   * Anything older is dropped without any late commentary.
+   */
+  const shouldFollowUp = useCallback((touch: TouchEventPayload, ageMs: number) => {
+    if (ageMs > FRESHNESS_MS) return false;
+    const mark = lifeRef.current?.consumeFreshMark(FRESHNESS_MS) ?? null;
+    if (!mark) return false;
+    return lifeRef.current?.worthCommenting(mark) ?? false;
+  }, []);
+
+  const { submit, busy: thinking } = useSpeechChannel({ process, shouldFollowUp });
 
   const handleTouch = useCallback(
     (touch: TouchEventPayload) => {
       setRipple({ x: touch.x, y: touch.y, id: Date.now() });
-      play(instantAnimation(touch));
-      // Instant local state change; the LLM decision arrives later.
-      lifeRef.current?.impulse({
-        arousal: touch.kind === "hold" || touch.kind === "long-press" ? 0.28 : 0.16,
-        attention: 0.6,
-        energy: 0.05,
+      // 1) FAST PERCEPTION CHANNEL — synchronous, at the exact moment of the
+      // stimulus, even while a line is playing. Never waits for, blocks, or
+      // interrupts the speech channel.
+      lifeRef.current?.notice({
+        kind: touch.kind,
+        x: touch.x,
+        y: touch.y,
+        intensity: intensityOf(touch),
       });
-      enqueue(touch);
+      play(instantAnimation(touch));
+
+      // 2) SPEECH CHANNEL — independent. While it is busy this only refreshes the
+      // short-lived freshness slot; nothing is queued up for later replay.
+      submit(touch);
     },
-    [enqueue, play],
+    [submit, play],
   );
 
   const { frameRef, pressPoint, livePoint, pressing, handlers } = useCharacterTouch({
